@@ -5,6 +5,7 @@ import pandas as pd
 import yaml
 from dataclasses import dataclass, asdict
 from tqdm import tqdm
+import argparse
 
 dataset_to_metrics = {
     "json_kv": "substring_exact_match",
@@ -56,8 +57,14 @@ custom_avgs = {
     "Re-rank": ['msmarco_rerank_psg NDCG@10', ],
     "LongQA": ['narrativeqa gpt-4-score', 'infbench_qa rougeL_f1', 'infbench_choice exact_match', ],
     "Summ": ['infbench_sum gpt-4-f1', 'multi_lexsum gpt-4-f1', ],
-    # "RULER": ['ruler_niah_s_1 ruler_recall', 'ruler_niah_s_2 ruler_recall', 'ruler_niah_s_3 ruler_recall', 'ruler_niah_mk_1 ruler_recall', 'ruler_niah_mk_2 ruler_recall', 'ruler_niah_mk_3 ruler_recall', 'ruler_niah_mq ruler_recall', 'ruler_niah_mv ruler_recall', 'ruler_cwe ruler_recall', 'ruler_fwe ruler_recall', 'ruler_vt ruler_recall', 'ruler_qa_1 substring_exact_match', 'ruler_qa_2 substring_exact_match'],
-    "Ours": ['Recall', 'RAG', 'ICL', 'Cite', 'Re-rank', 'LongQA', 'Summ'],
+    "RULER": ['ruler_niah_s_1 ruler_recall', 'ruler_niah_s_2 ruler_recall', 'ruler_niah_s_3 ruler_recall', 'ruler_niah_mk_1 ruler_recall', 'ruler_niah_mk_2 ruler_recall', 'ruler_niah_mk_3 ruler_recall', 'ruler_niah_mq ruler_recall', 'ruler_niah_mv ruler_recall', 'ruler_cwe ruler_recall', 'ruler_fwe ruler_recall', 'ruler_vt ruler_recall', 'ruler_qa_1 substring_exact_match', 'ruler_qa_2 substring_exact_match'],
+    "Ours": ['Recall', 'RAG', 
+            'ICL',
+             'Cite', 
+            'Re-rank', 
+            'LongQA', 
+            'Summ'
+         ],
 }
 
 @dataclass
@@ -159,7 +166,19 @@ class arguments:
 
         return dfs.to_dict("records")
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="evaluation on downstream tasks")
+    parser.add_argument("--input", type=str, default=None, help="path to results")
+    parser.add_argument("--output", type=str, default=None, help="path to output")
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == "__main__":
+
+    # 本程序参数入口
+    main_args = parse_arguments()
+
     # comment out the models you don't want to include, or add the new ones 
     models_configs = [
         {"model": "gpt-4-0125-preview", "use_chat_template": True, "training_length": 128000},
@@ -261,6 +280,14 @@ if __name__ == "__main__":
             {"model": "DeepSeek-R1-Distill-Qwen-7B", "training_length": 131072, "do_sample": True, "temperature": 0.6},
     ]
 
+    models_configs = [
+        #{"model": "GPT-OSS-20B", "training_length": 131072},
+        {"model": "gpt-oss-20b-fix", "training_length": 131072},
+    ]
+    if main_args.input:
+        model_name=os.path.basename(os.path.abspath(main_args.input))
+        models_configs[0]["model"]=model_name
+
     # set your configs here, only include the ones that you ran
     config_files = [
         "configs/recall.yaml", "configs/recall_short.yaml", 
@@ -270,7 +297,7 @@ if __name__ == "__main__":
         "configs/rerank.yaml", "configs/rerank_short.yaml", 
         "configs/icl.yaml", "configs/icl_short.yaml", 
         "configs/cite.yaml", "configs/cite_short.yaml", 
-        "configs/ruler.yaml", "configs/ruler_short.yaml", 
+        # "configs/ruler.yaml", "configs/ruler_short.yaml", 
     ]
 
     dataset_configs = []
@@ -287,12 +314,17 @@ if __name__ == "__main__":
     df = []
     for model in tqdm(models_configs):
         args = arguments()
-        args.tag = "v1" # SET YOUR TAG HERE
+        args.tag = "eval" # SET YOUR TAG HERE
         args.output_dir = f"output/{model['model']}"
+        if main_args.input:
+            args.output_dir = main_args.input
+
     
         for dataset in dataset_configs:
             args.update(dataset)
             args.update(model)
+            # HACK 通过修改这里，来控制collect特定seq len的结果
+            args.input_max_length=32768
 
             metric = args.get_averaged_metric()
             dsimple, mnames = args.get_metric_name()
@@ -312,9 +344,16 @@ if __name__ == "__main__":
     lf_df = lf_df.reset_index()
 
     for k, v in custom_avgs.items():
-        lf_df[k] = lf_df[v].mean(axis=1)
+        try:
+            lf_df[k] = lf_df[v].mean(axis=1)
+        except:
+            print("{k} not found in output dir")
 
     print(lf_df.to_csv(index=False))
+    if main_args.output:
+        lf_df.to_csv(f"{main_args.output}.csv", index=False)
+    else:
+        lf_df.to_csv("collect_result.csv", index=False)
 
     print("Warning, failed to get the following paths, make sure that these are correct or the printed results will not be accurate:", failed_paths)
     # import pdb; pdb.set_trace()

@@ -39,6 +39,7 @@ def parse_arguments():
     # evaluation settings
     parser.add_argument("--shots", type=int, default=2, help="total number of ICL demos")
     parser.add_argument("--input_max_length", type=str, default='8192', help="the maximum number of tokens of the input, we truncate the end of the context; can be separated by comma to match the specified datasets")
+    parser.add_argument("--seq_len_filter", type=str, default=None, help="control the final eval seq len filter")
 
     # generation settings
     parser.add_argument("--do_sample", type=ast.literal_eval, choices=[True, False], default=False, help="whether to use sampling (false is greedy), overwrites temperature")

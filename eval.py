@@ -67,14 +67,24 @@ def run_test(args, model, dataset, test_file, demo_file):
 
     # HY: for the thinking mode, we add additional 32k tokens to allow models to generate thinking process
     if args.thinking:
+        model.thinking = True
         args.generation_max_length += 32768
         args.input_max_length += 32768
         model.max_length = args.input_max_length
         model.generation_max_length = args.generation_max_length
         args.stop_newline = False
         logger.info(f"thinking mode, adding 32k tokens to generation and input max length, also disabling stop_newline")
-
+    
     logger.info("Running generation...")
+    # TMP HACK
+    # print(len(all_inputs))
+    # all_inputs = [all_inputs[0]]
+    # all_input_texts = [all_input_texts[0]]
+    # print(len(all_inputs[0]))
+    # print(all_inputs[0][0])
+    # print(all_input_texts)
+    # exit(0)
+    
     start_time = time.time()
     # generate all outputs
     if (isinstance(model, OpenAIModel) or isinstance(model, AnthropicModel)) and (not isinstance(model, TgiVllmModel)):
@@ -87,14 +97,19 @@ def run_test(args, model, dataset, test_file, demo_file):
 
     # then we do all the postprocessing + evaluation
     results = []
+    total_num = 0
+    valid_num = 0
     for idx, output in enumerate(all_outputs):
         test_item = data["data"][idx]
         input_text = all_input_texts[idx]
-
+        total_num += 1
+        # NOTICE: 对于没有返回正常output的样本，这里直接跳过样本。对于gpt-oss来说，会因为思考过长(且重复、低效)的原因输出被截断。
+        # 因此这种处理方式，最终分数会变高，因为跳过了处理不了的样本。跨模型比较也不公平。
         if output is None:
             logger.info(f"skipping example {idx+1} because the model returned None")
             continue
 
+        valid_num += 1
         # If we do not use the chat template, then we are doing completion, and for the sake of parsing, we want to prepend the system prompt to the input.
         # For example, since we are autocompleting "Answer:"" in the input, then we should prepend the system prompt to the output as well.
         # This requires some coordination from the dataset preprocessing
@@ -157,6 +172,7 @@ def run_test(args, model, dataset, test_file, demo_file):
     logger.info("Averaged metrics:")
     for k, v in averaged_metrics.items():
         logger.info(f"{k}: {v:.02f}")
+    logger.info(f"Eval valid ratio:  {valid_num / total_num * 100:.2f}%. Total sample: {total_num} | Valid sample: {valid_num}")
 
     output = {
         "args": args.__dict__,
@@ -164,6 +180,9 @@ def run_test(args, model, dataset, test_file, demo_file):
         "metrics": metrics,
         "averaged_metrics": averaged_metrics,
         "throughput": len(results) / (end_time - start_time),
+        "total_sample": total_num,
+        "valid_sample": valid_num,
+        "valid_ratio": f"{valid_num / total_num * 100:.2f}%",
     }
     if not args.no_cuda:
         output["memory_usage"] = mem_usage
@@ -194,10 +213,25 @@ def main():
     gen_lengths = ([int(args.generation_max_length)] * len(datasets)) if isinstance(args.generation_max_length, int) or len(args.generation_max_length.split(",")) == 1 else [int(l) for l in args.generation_max_length.split(",")]
     assert len(test_files) == len(demo_files)
 
+    # HACK: dataset, test_file, demo_file, max_length, gen_length 都是list，并且index一一对应
+    # 因此，如果设置了固定的seq_len_filter， 将会对这里的组合做一次过滤
+
     args.input_max_length = max(max_lengths)
+    _evals = zip(datasets, test_files, demo_files, max_lengths, gen_lengths)
+    if args.seq_len_filter:
+        # 过滤掉seq_len_filter之外的eval
+        seq_len_filter  = [ int(i) for i in args.seq_len_filter.split(",")]
+        filtered_evals = []
+        for dataset, test_file, demo_file, max_length, gen_length in _evals:
+            if max_length in seq_len_filter:
+                filtered_evals.append((dataset, test_file, demo_file, max_length, gen_length))
+        _evals = filtered_evals
+    
+
+    logger.info(f"Total Eval Task: {len(_evals)}")
     model = load_LLM(args)
 
-    for dataset, test_file, demo_file, max_length, gen_length in zip(datasets, test_files, demo_files, max_lengths, gen_lengths):
+    for dataset, test_file, demo_file, max_length, gen_length in _evals:
         args.datasets = dataset
         args.test_files = test_file
         args.demo_files = demo_file
@@ -205,6 +239,11 @@ def main():
         args.generation_max_length = gen_length
         model.max_length = max_length
         model.generation_max_length = gen_length
+
+        # TEMP HACK
+        # print(f"{dataset} {test_file}")
+        # if "banking77" not in dataset:
+        #     continue
 
         try:
             output_path = run_test(args, model, dataset, test_file, demo_file)

@@ -15,6 +15,26 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+from functools import lru_cache
+
+@lru_cache(maxsize=None)
+def log_once(message: str, key: str = None, logger=None, level="info"):
+    """
+    使用 lru_cache 实现只打印一次。
+    参数说明：
+        message: 要打印或记录的内容。
+        key: 可选，用于区分不同打印；默认用 message。
+        logger: logging.Logger 对象；不传则直接 print。
+        level: 打印级别，默认 info。
+    """
+    if key is None:
+        key = message
+    if logger:
+        log_method = getattr(logger, level, logger.info)
+        log_method(message)
+    else:
+        print(message)
+    return True
 
 def format_chat(
     message: str,
@@ -76,6 +96,7 @@ class LLM:
         stop_new_line: bool=False,
         use_chat_template: bool=False,
         system_message: Optional[str]="You are a helpful assistant.",
+        thinking=False,
     ):
         self.model_name = model_name
         self.temperature = temperature
@@ -87,6 +108,7 @@ class LLM:
         self.use_chat_template = use_chat_template
         self.system_message = system_message
         self.stops = None
+        self.thinking = False
         if stop_new_line:
             self.stops = ["\n", "\n\n"]
 
@@ -153,6 +175,9 @@ class OpenAIModel(LLM):
         use_chat_template=True,
         system_message=None,
         seed=42,
+        thinking=False,
+        use_completions_api=True,
+
         **kwargs,
     ):
         super().__init__(
@@ -180,12 +205,17 @@ class OpenAIModel(LLM):
         self.tokenizer = tiktoken.encoding_for_model(model_name)
         self.seed = seed
         self.API_MAX_LENGTH = 128000 # this is defined by the OPENAI API
+        self.use_completions_api = use_completions_api
 
 
     def prepare_inputs(self, test_item, data):
         buffer = 100
+        # HACK: 如果模型使用的是 completions，那么需要注意在context之后补全data中的system template, 引导label生成
         # we don't include system message to stay consistent with other models, which defaults to None
-        prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
+        if self.use_completions_api:
+            prompt = format_chat(data["prompt_template"].format(**test_item), system_message=self.system_message)
+        else:
+            prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
         inputs = "\n".join([f"Role: {x['role']}\nContent: {x['content']}" for x in prompt])
         tokens = self.tokenizer.encode(inputs)
         input_len = len(tokens)
@@ -198,7 +228,14 @@ class OpenAIModel(LLM):
             truncate_length = input_len - (self.max_length - self.generation_max_length - buffer)
             new_context = self.tokenizer.decode(self.tokenizer.encode(test_item["context"])[:-truncate_length])
             test_item["context"] = new_context
-            prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
+            # prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
+            if self.use_completions_api:
+                prompt = format_chat(data["prompt_template"].format(**test_item), system_message=self.system_message)
+            else:
+                prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
+            
+        # print(prompt)
+        # exit(0)
         return prompt
 
 
@@ -206,32 +243,85 @@ class OpenAIModel(LLM):
         if inputs is None:
             # for system_message, set the self.system_message attribute
             inputs = format_chat(prompt, system_message=self.system_message)
-
-        # kwargs can be used to pass additional parameters to the model: max_tokens, stop, etc.
-        func = functools.partial(
-            self.model.chat.completions.create,
-            model=self.model_name,
-            messages=inputs,
-            max_tokens=self.generation_max_length,
-            temperature=self.temperature if self.do_sample else 0.0,
-            top_p=self.top_p,
-            stop=self.stops,
-            seed=self.seed,
-            **kwargs,
-        )
-        output = call_api(func)
-        if output is not None:
-            if output.choices[0].message.content is None:
-                # sometimes the model output can get filtered but still return a message
-                return None
-            return {
-                "output": output.choices[0].message.content,
-                "input_len": output.usage.prompt_tokens,
-                "output_len": output.usage.completion_tokens,
-                "input_text": inputs,
-                "system_fingerprint": output.system_fingerprint,
-            }
-        return None
+        
+        
+        if self.use_completions_api:
+            # 使用 v1/completions API (base model)
+            # 将 chat messages 转换为单个 prompt 字符串
+            if isinstance(inputs, list):
+                # 简单拼接所有消息内容
+                prompt_text = "\n".join([msg.get("content", "") for msg in inputs if msg.get("content")])
+            else:
+                prompt_text = inputs
+            
+            func = functools.partial(
+                self.model.completions.create,
+                model=self.model_name,
+                prompt=prompt_text,
+                max_tokens=self.generation_max_length,
+                temperature=self.temperature if self.do_sample else 0.0,
+                top_p=self.top_p,
+                stop=self.stops,
+                seed=self.seed,
+                **kwargs,
+            )
+            output = call_api(func)
+            
+            if output is not None:
+                if output.choices[0].text is None:
+                    return None
+                return {
+                    "output": output.choices[0].text,
+                    "input_len": output.usage.prompt_tokens,
+                    "output_len": output.usage.completion_tokens,
+                    "input_text": prompt_text,
+                    "system_fingerprint": getattr(output, "system_fingerprint", None),
+                }
+            return None
+        else:
+            # HACK： Hard code 关闭think
+            if self.thinking == False:
+                # 默认qwen3会打开think模式
+                if "qwen3" in self.model_name:
+                    if "extra_body" not in kwargs:
+                        kwargs["extra_body"] = {
+                            "chat_template_kwargs": {
+                                "enable_thinking": False
+                            }
+                        }
+                    else:
+                        kwargs["extra_body"]["chat_template_kwargs"] = {
+                            "enable_thinking": False
+                        }
+                    log_once("[HACK] vllm request 注入 \"enable_thinking\": False ")
+            
+            # kwargs can be used to pass additional parameters to the model: max_tokens, stop, etc.
+            func = functools.partial(
+                self.model.chat.completions.create,
+                model=self.model_name,
+                messages=inputs,
+                max_tokens=self.generation_max_length,
+                temperature=self.temperature if self.do_sample else 0.0,
+                top_p=self.top_p,
+                stop=self.stops,
+                seed=self.seed,
+                reasoning_effort=getattr(self, "reasoning_effort", None),
+                **kwargs,
+            )
+            output = call_api(func)
+            # print(output)
+            if output is not None:
+                if output.choices[0].message.content is None:
+                    # sometimes the model output can get filtered but still return a message
+                    return None
+                return {
+                    "output": output.choices[0].message.content,
+                    "input_len": output.usage.prompt_tokens,
+                    "output_len": output.usage.completion_tokens,
+                    "input_text": inputs,
+                    "system_fingerprint": output.system_fingerprint,
+                }
+            return None
 
     def batch_api(self, inputs, batch_file, **kwargs):
         with open(batch_file, "w") as f:
@@ -340,6 +430,8 @@ class TgiVllmModel(OpenAIModel):
         use_chat_template=True, 
         system_message=None,
         seed=42,
+        thinking=False,
+        use_completions_api=True,
         **kwargs
     ):
         self.model_name = model_name
@@ -352,6 +444,13 @@ class TgiVllmModel(OpenAIModel):
         self.use_chat_template = use_chat_template
         self.system_message = system_message
         self.stops = None
+        self.reasoning_effort = None
+        self.thinking = thinking
+        self.use_completions_api = use_completions_api
+
+        if "gpt-oss" in  self.model_name: # GPT OSS model
+            self.reasoning_effort = "low"
+        
         if stop_new_line:
             self.stops = ["\n", "\n\n"]
         
@@ -388,8 +487,10 @@ class TgiVllmModel(OpenAIModel):
         if len(kwargs) > 0:
             logger.warning("kwargs are not supported for batch generation")
         # use thread_map instead of process_map since the bottleneck is the api call
+        # HACK: max_worker 32=> 100
         outputs = thread_map(self.generate, inputs, prompt, max_workers=32)
-
+        # print(inputs)
+        # print(outputs)
         return outputs
 
 
@@ -1257,7 +1358,12 @@ class SGLangModel(LLM):
 
 def load_LLM(args):
     kwargs = {}
-    if "gpt" in args.model_name_or_path:
+    if args.use_tgi_serving or args.use_vllm_serving:
+        model_cls = TgiVllmModel
+        kwargs['seed'] = args.seed
+        kwargs["endpoint_url"] = args.endpoint_url
+        kwargs["api_key"] = args.api_key
+    elif "gpt" in args.model_name_or_path:
         model_cls = OpenAIModel
         kwargs['seed'] = args.seed
     elif "claude" in args.model_name_or_path:
@@ -1269,11 +1375,6 @@ def load_LLM(args):
     elif args.use_vllm:
         model_cls = VLLMModel
         kwargs['seed'] = args.seed
-    elif args.use_tgi_serving or args.use_vllm_serving:
-        model_cls = TgiVllmModel
-        kwargs['seed'] = args.seed
-        kwargs["endpoint_url"] = args.endpoint_url
-        kwargs["api_key"] = args.api_key
     elif args.use_sglang:
         model_cls = SGLangModel
         kwargs['seed'] = args.seed
@@ -1296,7 +1397,7 @@ def load_LLM(args):
         generation_max_length=args.generation_max_length,
         generation_min_length=args.generation_min_length,
         do_sample=args.do_sample,
-        stop_newline=args.stop_newline,
+        stop_newline=args.stop_new_line,
         use_chat_template=args.use_chat_template,
         system_message=args.system_message,
         **kwargs,

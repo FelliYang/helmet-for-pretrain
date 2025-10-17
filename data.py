@@ -338,7 +338,7 @@ def load_msmarco_rerank(path, demo_path=None, max_test_samples=None, shots=0, se
         "post_process": post_process,
     }
 
-
+# MARK: ICL
 def load_icl(dataset, max_test_sample=None, seed=42):
     shot = int(dataset.split("shot")[0].split("_")[-1])
 
@@ -445,7 +445,8 @@ def load_icl(dataset, max_test_sample=None, seed=42):
             item_template.format(text=selected_item[text_field], label=str(label_mapping[int(selected_item[label_field])]))
             for selected_item in demos]
         )
-        return {"context": context, "question": sample[text_field], "answer": str(label_mapping[int(sample[label_field])])}
+        _data =  {"context": context, "question": sample[text_field], "answer": str(label_mapping[int(sample[label_field])])}
+        return _data
 
     final_data = test_data.map(preprocess, num_proc=40)
 
