@@ -1,0 +1,10 @@
+input_max_length: 131072
+datasets: json_kv_chinese_poem_balanced
+generation_max_length: 100
+test_files: data/chinese-poetry/tang_poetry_kv_test_128k_balanced.jsonl
+demo_files: ''
+use_chat_template: false
+max_test_samples: 100
+shots: 2
+stop_new_line: false
+model_name_or_path: self-define

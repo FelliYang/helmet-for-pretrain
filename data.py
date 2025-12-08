@@ -670,6 +670,10 @@ def load_data(args, dataset, path=None, demo_path=None):
         data = load_qa(dataset, path, demo_path, max_test_samples=args.max_test_samples, shots=args.shots)
     elif dataset == "json_kv":
         data = load_json_kv(path, args.shots, args.max_test_samples, args.seed)
+    elif dataset == "json_kv_chinese_poem":
+        data = load_json_kv(path, args.shots, args.max_test_samples, args.seed)
+    elif dataset == "json_kv_chinese_poem_balanced":
+        data = load_json_kv(path, args.shots, args.max_test_samples, args.seed)
     elif "narrativeqa" in dataset:
         data = load_narrativeqa(dataset, args.shots, args.max_test_samples, args.seed)
     elif "msmarco" in dataset:

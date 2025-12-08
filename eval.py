@@ -56,6 +56,8 @@ def run_test(args, model, dataset, test_file, demo_file):
     metrics = defaultdict(list)
     all_inputs = []
     all_input_texts = []
+    # print("start here")
+    # print(f"{len(dataloader)}")
     for idx, inputs in enumerate(tqdm(dataloader, desc="Preparing inputs")):
         inputs, input_text = inputs[0]
         if args.count_tokens:
@@ -64,7 +66,7 @@ def run_test(args, model, dataset, test_file, demo_file):
             continue
         all_inputs.append(inputs)
         all_input_texts.append(input_text)
-
+    print("end here")
     # HY: for the thinking mode, we add additional 32k tokens to allow models to generate thinking process
     if args.thinking:
         model.thinking = True
@@ -189,11 +191,11 @@ def run_test(args, model, dataset, test_file, demo_file):
 
     if args.output_dir is not None:
         with open(output_path, "w") as f:
-            json.dump(output, f, indent=4)
+            json.dump(output, f, indent=4, ensure_ascii=False,)
         # this makes it easier to parse results, but alce uses a different evaluation script
         if not "alce" in dataset:
             with open(output_path + ".score", "w") as f:
-                json.dump(output["averaged_metrics"], f, indent=4)
+                json.dump(output["averaged_metrics"], f, indent=4, ensure_ascii=False,)
         logger.info(f"done, results are written to {output_path}")
 
     return output_path
@@ -218,6 +220,8 @@ def main():
 
     args.input_max_length = max(max_lengths)
     _evals = zip(datasets, test_files, demo_files, max_lengths, gen_lengths)
+
+    # assert args.seq_len_filter == "None", print(type(args.seq_len_filter))
     if args.seq_len_filter:
         # 过滤掉seq_len_filter之外的eval
         seq_len_filter  = [ int(i) for i in args.seq_len_filter.split(",")]
@@ -226,11 +230,12 @@ def main():
             if max_length in seq_len_filter:
                 filtered_evals.append((dataset, test_file, demo_file, max_length, gen_length))
         _evals = filtered_evals
-    
 
+    _evals = list(_evals)
     logger.info(f"Total Eval Task: {len(_evals)}")
-    model = load_LLM(args)
+    model = load_LLM(args)  
 
+    # print(list(_evals))
     for dataset, test_file, demo_file, max_length, gen_length in _evals:
         args.datasets = dataset
         args.test_files = test_file
@@ -246,7 +251,9 @@ def main():
         #     continue
 
         try:
+            print("run_test...")
             output_path = run_test(args, model, dataset, test_file, demo_file)
+            
 
             if "alce" in dataset and not args.count_tokens and (not os.path.exists(output_path+".score") or args.overwrite):
                 import eval_alce
