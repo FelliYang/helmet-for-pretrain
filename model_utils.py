@@ -547,7 +547,8 @@ class TgiVllmModel(OpenAIModel):
             logger.warning("kwargs are not supported for batch generation")
         # use thread_map instead of process_map since the bottleneck is the api call
         # HACK: max_worker 32=> 100
-        outputs = thread_map(self.generate, inputs, prompt, max_workers=32)
+        max_workers = int(os.getenv("MAX_WORKERS", "32"))
+        outputs = thread_map(self.generate, inputs, prompt, max_workers=max_workers)
         # print(inputs)
         # print(outputs)
         return outputs
