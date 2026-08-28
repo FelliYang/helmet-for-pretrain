@@ -1,3 +1,5 @@
+
+
 # <img src="assets/logo.jpeg" alt="HELMET" width="30"> HELMET: How to Evaluate Long-context Language Models Effectively and Thoroughly
 
 ---
@@ -95,7 +97,7 @@ for task in recall rag rerank cite longqa summ icl; do
 done
 ```
 
-This will output the results file under the output directory in two files: `.json` contains all the data point details while `.json.score` only contain the aggregated metrics.
+This will output the results file under the output directory in two files: `.json` contains all the data point details while `.json.score` only contains the aggregated metrics.
 
 For slurm users, you may find our slurm scripts useful:
 ```bash
@@ -598,4 +600,3 @@ Please also cite the original dataset creators, listed below:
 ```
 
 </details>
-
