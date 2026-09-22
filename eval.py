@@ -41,6 +41,8 @@ def run_test(args, model, dataset, test_file, demo_file):
 
     random.seed(args.seed)
     data = load_data(args, dataset, test_file, demo_file)
+    # 传递 dataset 名给 model.prepare_inputs，用于按任务类型选择分隔符
+    data["_dataset_name"] = dataset
     logger.info(f"loaded {len(data['data'])} samples from {dataset}")
 
     dataloader = DataLoader(

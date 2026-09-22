@@ -1,0 +1,3 @@
+model,input_max_length,banking77 exact_match,chinese_poem substring_exact_match,clinic150 exact_match,json_kv substring_exact_match,nlu exact_match,ruler_niah_mk_2 ruler_recall,ruler_niah_mk_3 ruler_recall,ruler_niah_mv ruler_recall,trec_coarse exact_match,trec_fine exact_match
+qwen3-1p8b-fineweb150b-8k,16384,0.4,,,0.0,,0.0,0.0,0.0,0.0,1.2
+qwen3next-1p8b-fineweb150b-8k,16384,28.999999999999996,,18.4,0.0,24.4,5.0,0.0,19.5,40.400000000000006,10.0

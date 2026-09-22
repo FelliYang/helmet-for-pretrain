@@ -16,6 +16,26 @@ import pytrec_eval
 # import tensor_parallel as tp
 
 import logging
+
+# 繁简归一化：全唐诗语料为繁体，部分模型输出简体，
+# 若不归一化会把"召回正确但字形是简体"的样本误判为错。
+# t2s 对英文/已是简体的文本是 no-op，因此可安全全局应用。
+_T2S_CONVERTER = None
+_T2S_FAILED = False
+
+def to_simplified(text):
+    global _T2S_CONVERTER, _T2S_FAILED
+    if not text or _T2S_FAILED:
+        return text
+    if _T2S_CONVERTER is None:
+        try:
+            import opencc
+            _T2S_CONVERTER = opencc.OpenCC('t2s')
+        except Exception:
+            # opencc 不可用时降级为原样返回，不影响其它任务
+            _T2S_FAILED = True
+            return text
+    return _T2S_CONVERTER.convert(text)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S')
 logger = logging.getLogger(__name__)
@@ -37,7 +57,7 @@ def normalize_answer(s):
     def lower(text):
         return text.lower()
 
-    return white_space_fix(remove_articles(remove_punc(lower(s))))
+    return white_space_fix(remove_articles(remove_punc(lower(to_simplified(s)))))
 
 
 def remove_citations(sent):

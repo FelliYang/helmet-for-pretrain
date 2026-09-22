@@ -1,0 +1,2 @@
+input_max_length,model,banking77 exact_match,clinic150 exact_match,json_kv substring_exact_match,nlu exact_match,ruler_niah_mk_2 ruler_recall,ruler_niah_mk_3 ruler_recall,ruler_niah_mv ruler_recall,trec_coarse exact_match,trec_fine exact_match,Recall,ICL
+32768,kimi-linear-48B-A3B-base,89.73305954825463,95.19999999999999,100.0,90.75975359342917,100.0,99.0,94.0,90.34907597535934,76.8,98.25,88.56837782340862

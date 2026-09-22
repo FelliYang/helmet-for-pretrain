@@ -212,8 +212,19 @@ class OpenAIModel(LLM):
         buffer = 100
         # HACK: 如果模型使用的是 completions，那么需要注意在context之后补全data中的system template, 引导label生成
         # we don't include system message to stay consistent with other models, which defaults to None
+        # 分隔符策略: 默认用 args 传入的 answer_prefix_sep(换行);
+        # 但对 ruler niah 单针任务(mk_1/mk_2/mk_3/single),自动用空格——实测换行在这些任务上
+        # 诱发 base 模型回声 query(mk_3: 10%->33%),空格显著更优。
+        # 多值(mv/mq)/kv 类/古诗等保持换行不变。
+        sep = getattr(self, "answer_prefix_sep", "\n")
+        # 按 dataset 自动覆盖:单针 niah 用空格
+        dataset_name = data.get("_dataset_name", "")
+        niah_single_keywords = ["niah_mk_1", "niah_mk_2", "niah_mk_3", "niah_single", "niah_s_1", "niah_s_2", "niah_s_3", "multikey_1", "multikey_2", "multikey_3"]
+        if any(k in dataset_name for k in niah_single_keywords):
+            sep = " "
+        completion_tmpl = (data["user_template"] + sep + data["system_template"]) if ("user_template" in data and "system_template" in data) else data["prompt_template"]
         if self.use_completions_api:
-            prompt = format_chat(data["prompt_template"].format(**test_item), system_message=self.system_message)
+            prompt = format_chat(completion_tmpl.format(**test_item), system_message=self.system_message)
         else:
             prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
         inputs = "\n".join([f"Role: {x['role']}\nContent: {x['content']}" for x in prompt])
@@ -230,7 +241,7 @@ class OpenAIModel(LLM):
             test_item["context"] = new_context
             # prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
             if self.use_completions_api:
-                prompt = format_chat(data["prompt_template"].format(**test_item), system_message=self.system_message)
+                prompt = format_chat(completion_tmpl.format(**test_item), system_message=self.system_message)
             else:
                 prompt = format_chat(data["user_template"].format(**test_item), system_message=self.system_message)
             
@@ -532,7 +543,17 @@ class TgiVllmModel(OpenAIModel):
         else:
             print(f"** Model: {model_name}")
             self.model_name = model_name
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True )
+            # 支持直接用 tiktoken 编码名（如 o200k_base）当 tokenizer，
+            # 适配 Megatron TikTokenizer 类型的 ckpt（无 HF tokenizer 目录、且本机离线）
+            tiktoken_encodings = {"o200k_base", "cl100k_base", "p50k_base", "r50k_base", "gpt2"}
+            tok_spec = model_name.replace("tiktoken:", "")
+            if tok_spec in tiktoken_encodings:
+                import tiktoken
+                # tiktoken 的 Encoding 自带 encode/decode，与 prepare_inputs 的用法兼容
+                self.tokenizer = tiktoken.get_encoding(tok_spec)
+                print(f"** Using tiktoken encoding: {tok_spec} (vocab={self.tokenizer.n_vocab})")
+            else:
+                self.tokenizer = AutoTokenizer.from_pretrained(tok_spec, trust_remote_code=True )
         self.seed = seed
         self.API_MAX_LENGTH = float('inf')
 
@@ -1462,5 +1483,8 @@ def load_LLM(args):
         system_message=args.system_message,
         **kwargs,
     )
+    # completions/base 路径下 question 与 answer-prefix 的分隔符(默认空格)，
+    # 见 arguments.py --answer_prefix_sep 说明
+    model.answer_prefix_sep = getattr(args, "answer_prefix_sep", " ")
 
     return model

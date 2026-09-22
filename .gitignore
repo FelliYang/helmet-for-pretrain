@@ -173,3 +173,12 @@ slurm
 
 *.ipynb
 gty*
+
+# 本地下载/转换的模型权重目录（每个约 700MB，不入库）
+qwen3*/
+*.safetensors
+
+# core dump 与集群内部缓存
+core.*
+.bns.lock/
+.bos_traffic_control/

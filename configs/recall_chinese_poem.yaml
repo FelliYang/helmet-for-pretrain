@@ -1,8 +1,8 @@
-input_max_length: 32768,65536,131072
-datasets: json_kv_chinese_poem,json_kv_chinese_poem,json_kv_chinese_poem
-generation_max_length: 100,100,100
-test_files: data/chinese-poetry/tang_poetry_kv_test_32k.jsonl,data/chinese-poetry/tang_poetry_kv_test_64k.jsonl,data/chinese-poetry/tang_poetry_kv_test_128k.jsonl
-demo_files: ',,'
+input_max_length: 4096,32768,65536,131072
+datasets: json_kv_chinese_poem_balanced,json_kv_chinese_poem_balanced,json_kv_chinese_poem_balanced,json_kv_chinese_poem_balanced
+generation_max_length: 100,100,100,100
+test_files: data/chinese-poetry/tang_poetry_kv_test_4k_balanced.jsonl,data/chinese-poetry/tang_poetry_kv_test_32k_balanced.jsonl,data/chinese-poetry/tang_poetry_kv_test_64k_balanced.jsonl,data/chinese-poetry/tang_poetry_kv_test_128k_balanced.jsonl
+demo_files: ',,,'
 use_chat_template: false
 max_test_samples: 100
 shots: 2

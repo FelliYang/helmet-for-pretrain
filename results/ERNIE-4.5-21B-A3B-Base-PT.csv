@@ -1,0 +1,2 @@
+input_max_length,model,ruler_niah_mk_2 ruler_recall,ruler_niah_mk_3 ruler_recall,ruler_niah_mv ruler_recall,json_kv substring_exact_match,trec_coarse exact_match,trec_fine exact_match,banking77 exact_match,clinic150 exact_match,nlu exact_match,Recall,ICL
+32768,ERNIE-4.5-21B-A3B-Base-PT,95.0,72.0,87.5,98.0,94.19999999999999,71.8,82.0,90.2,79.2,88.125,83.47999999999999

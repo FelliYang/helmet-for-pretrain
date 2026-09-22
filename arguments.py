@@ -62,6 +62,12 @@ def parse_arguments():
     # misc
     parser.add_argument("--debug", action="store_true", help="for debugging")
     parser.add_argument("--count_tokens", action="store_true", help="instead of running generation, just count the number of tokens (only for HF models not API)")
+    # completions/base 模型: 问题与 answer-prefix(system_template)之间的分隔符。
+    # HELMET 原来硬编码为换行 "\n"；实测发现对 ruler niah 单针任务(mk_2/mk_3)换行会诱发 base 模型
+    # "回声 query"(mk_3 10%->31%),但对多值任务(mv)和 kv 类任务换行反而更好。
+    # 默认保持换行(兼容性最好)；在 model_utils 内按 dataset 类型对 niah 单针任务自动改空格。
+    # 手动指定可覆盖一切: --answer_prefix_sep ' ' 或 --answer_prefix_sep '\n'
+    parser.add_argument("--answer_prefix_sep", type=str, default="\n", help="separator between the question and the answer-prefix for completions/base models (default newline; pass ' ' for niah-friendly space)")
 
     args = parser.parse_args()
     config = yaml.safe_load(open(args.config)) if args.config is not None else {}
@@ -77,5 +83,9 @@ def parse_arguments():
     if not args.do_sample and args.temperature != 0.0:
         args.temperature = 0.0
         logger.info("overwriting temperature to 0.0 since do_sample is False")
+
+    # 命令行里没法直接传真正的换行，允许用字面量 '\n' 表示换行
+    if isinstance(args.answer_prefix_sep, str):
+        args.answer_prefix_sep = args.answer_prefix_sep.replace("\\n", "\n")
 
     return args

@@ -910,4 +910,4 @@ if __name__ == '__main__':
         print("⚠️  警告: 'output' 目录不存在，将创建空目录")
         os.makedirs('output')
 
-    app.run(debug=True, host='0.0.0.0', port=8912)
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('VIZ_PORT', 8912)))

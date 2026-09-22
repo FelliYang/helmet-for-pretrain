@@ -1,0 +1,2 @@
+input_max_length,model,banking77 exact_match,clinic150 exact_match,json_kv substring_exact_match,nlu exact_match,ruler_niah_mk_2 ruler_recall,ruler_niah_mk_3 ruler_recall,ruler_niah_mv ruler_recall,trec_coarse exact_match,trec_fine exact_match,Recall,ICL
+32768,ernie_A3B_midtrain,2.8000000000000003,1.7999999999999998,57.99999999999999,0.2,24.0,16.0,33.25,14.6,2.4,32.8125,4.36
